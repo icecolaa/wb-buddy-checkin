@@ -23,8 +23,8 @@
 放到 WorkBuddy 的技能目录：
 
 ```
-Windows:  C:\Users\<你>\.workbuddy\skills\wb-checkin-icecola\
-macOS:    ~/.workbuddy/skills/wb-checkin-icecola/
+Windows:  C:\Users\<你>\.workbuddy\skills\wb-buddy-checkin\
+macOS:    ~/.workbuddy/skills/wb-buddy-checkin/
 ```
 
 或直接 `git clone` 到上述位置。
