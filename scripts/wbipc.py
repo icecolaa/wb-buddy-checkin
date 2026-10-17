@@ -36,6 +36,7 @@ PROTOCOL = 1
 PIPE_HTTP = "wb.request"
 METHOD_HTTP = "http.fetch"
 MAX_FRAME = 8 * 1024 * 1024
+CLIENT_VERSION = "1.1.0"
 
 
 class WbipcError(RuntimeError):
@@ -260,7 +261,7 @@ class WbipcClient:
             "protocol_max": PROTOCOL,
             "client_nonce": client_nonce,
             "ticket_id": ticket_id(self._ticket),
-            "client": {"kind": "skill", "id": "wb-buddy-checkin", "version": "1.0.0"},
+            "client": {"kind": "skill", "id": "wb-buddy-checkin", "version": CLIENT_VERSION},
         })
 
         msg = self._tx.recv(self.timeout)

@@ -1,4 +1,4 @@
-# WorkBuddy 加油站每日签到
+# WorkBuddy 加油站签到
 
 一条命令办完 WorkBuddy「Buddy 加油站」的每日积分：**签到 → 连签进度 → 猫猫旅行**。
 全部幂等，重复执行不会重复领取。
@@ -15,6 +15,9 @@
 不解析加密信封、不读进程内存、不落盘 token —— 只用客户端自己开的 IPC 通道，
 让客户端用自己的身份去发请求。因此客户端怎么改登录态加密格式，这里都不会失效。
 
+代价只有一条：**运行时要开着 WorkBuddy 客户端**（并且已登录）。
+需要「客户端不开也能签」的话，得保存凭据，那是另一类方案，本项目刻意不做。
+
 ## 安装
 
 放到 WorkBuddy 的技能目录：
@@ -29,11 +32,14 @@ macOS:    ~/.workbuddy/skills/wb-checkin-icecola/
 ## 用法
 
 ```bash
-python scripts/checkin.py --doctor   # 自检（改版后第一件事）
-python scripts/checkin.py --probe    # 只读探测，绝不发起写请求
-python scripts/checkin.py            # 签到 + 连签 + 旅行
-python scripts/checkin.py --json     # 结构化输出
-python scripts/checkin.py --no-travel --no-depart   # 只签到
+python scripts/checkin.py --self-test     # 离线自检：不联网、不读登录态
+python scripts/checkin.py --doctor        # 环境自检（改版后第一件事）
+python scripts/checkin.py --check-only    # 只读：今天签没签 / 连签 / 余额 / 旅行状态
+python scripts/checkin.py                 # 签到 + 连签 + 旅行闭环
+python scripts/checkin.py travel          # 只看旅行（只读）
+python scripts/checkin.py travel --travel-auto   # 允许领取 + 派遣
+python scripts/checkin.py --json          # 结构化输出
+python scripts/checkin.py --no-travel     # 只签到
 ```
 
 ### 定时任务
@@ -44,8 +50,10 @@ python scripts/checkin.py --no-travel --no-depart   # 只签到
 python <技能目录>/scripts/checkin.py --json
 ```
 
+提示词模板见 [`references/examples.md`](references/examples.md)。
+
 电脑不常全天开机的话，可以设多时点（9 / 12 / 15 / 18 / 21 点各一次）补签，
-脚本幂等，重复执行不会重复领取。
+脚本幂等，重复执行不会重复领取；也可以先跑 `--check-only` 再决定要不要跑全流程。
 
 ## 工作原理
 
@@ -54,7 +62,7 @@ python <技能目录>/scripts/checkin.py --json
 ```
 
 1. 从 `~/.workbuddy/wbipc/endpoint.json` 读出 `endpoint` 与 `ticket`
-2. NDJSON 一帧一行传输，三轮 HMAC-SHA256 挑战应答完成双向身份验证：
+2. NDJSON 一帧一行传输，四帧 HMAC-SHA256 挑战应答完成双向身份验证：
 
    ```
    C -> session_hello     {protocol_min, protocol_max, client_nonce, ticket_id, client}
@@ -64,16 +72,20 @@ python <技能目录>/scripts/checkin.py --json
    ```
 
 3. 在同一通道上跑 JSON-RPC 2.0：先 `broker/GetPipe` 申请 `wb.request` 通道，
-   再用 `http.fetch` 让客户端代发 HTTP 请求
+   再用 `http.fetch` 让客户端代发 HTTP 请求（`path` 必须是相对路径）
 
 脚本发出去的只有相对路径和 JSON body，**没有鉴权头**——那部分由客户端自己附加。
+协议细节与踩过的坑记在 [`references/protocol.md`](references/protocol.md)。
 
 ## 命令与开关
 
 | 开关 | 作用 |
 |---|---|
+| `--self-test` | 离线自检协议实现（不联网、不读登录态） |
 | `--doctor` | 环境自检：通道、握手、活动状态、Buddy 与旅行状态 |
-| `--probe` | 只读探测，不发任何写请求 |
+| `--check-only` / `--status` / `--probe` | 只读探测，一个写请求都不发 |
+| `travel` | 只跑旅行；默认只读，加 `--travel-auto` 才领取并派遣 |
+| `--location 1-4` | 指定派遣地点，缺省随机（四地收益相同） |
 | `--json` | 结构化输出 |
 | `--no-travel` | 跳过猫猫旅行 |
 | `--no-depart` | 只领取已到达的奖励，不发起新派遣 |
@@ -90,15 +102,16 @@ python <技能目录>/scripts/checkin.py --json
 
 | 步骤 | 合法状态 |
 |---|---|
-| `checkin` | `success` / `already_checked` / `skipped` |
-| `streak` | `ready` / `locked` / `skipped` |
-| `travel` | `departed` / `claimed` / `traveling` / `idle_limit` / `no_buddy` / `skipped` |
+| `checkin` | `success` / `already_checked` / `pending` / `skipped` / `error` |
+| `streak` | `ready` / `locked` / `skipped` / `error` |
+| `travel` | `departed` / `claimed` / `traveling` / `arrived` / `idle` / `idle_limit` / `no_buddy` / `skipped` / `error` |
 
-`traveling` 与 `idle_limit` 是正常终态，不是失败。
+`traveling` / `arrived` / `idle_limit` / `no_buddy` / `pending` 都是正常终态，不是失败；
+`error` 是合法状态，但一定同时出现在 `anomalies` 里。
 
 ## 退出码
 
-`0` 成功（含幂等跳过）｜`1` 接口 / 网络错误｜`3` IPC 通道不可用
+`0` 成功（含幂等跳过）｜`1` 接口 / 网络 / 业务错误｜`2` 参数错误｜`3` IPC 通道不可用
 
 ## 排错
 
@@ -106,21 +119,27 @@ python <技能目录>/scripts/checkin.py --json
 |---|---|
 | 退出码 3 | 先跑 `--doctor`；通道要求 WorkBuddy 桌面端正在运行且已登录 |
 | `E_PROTOCOL_MISMATCH` | 客户端改了 IPC 协议，需要更新本 Skill |
-| `E_AUTH` / `auth_failed` | 客户端重启导致票据轮换，重跑即可 |
+| `E_AUTH` / `auth_failed` | 客户端重启导致票据轮换，脚本会自动重试一次，仍失败就重开客户端 |
 | `E_TIMEOUT` | 客户端无响应，重启客户端 |
+| `E_BAD_REQUEST: path must be relative` | 传了绝对 URL，客户端只接受相对路径 |
 | 旅行一直 `idle_limit` | 今日派遣次数用完，明天再来 |
+| 旅行 `no_buddy` | 账号还没领 Buddy：客户端「成长计划」→ 领取一只 → 手动点「领取奖励」 |
 | 余额看着没变 | 接口返回的余额可能是领取前的快照，以加油站面板为准 |
 
 ## 目录结构
 
 ```
 .
-├── SKILL.md              # 技能定义（含 SkillHub frontmatter）
+├── SKILL.md                    # 技能定义（含 SkillHub frontmatter）
 ├── README.md
+├── CHANGELOG.md
 ├── LICENSE
+├── references/
+│   ├── protocol.md             # IPC 协议备忘（握手 / RPC / 已知坑）
+│   └── examples.md             # 自动化提示词与输出样例
 └── scripts/
-    ├── wbipc.py          # IPC 客户端：发现、握手、JSON-RPC、HTTP 转发
-    └── checkin.py        # 业务层：签到 / 连签 / 旅行 / 自检
+    ├── wbipc.py                # IPC 客户端：发现、握手、JSON-RPC、HTTP 转发
+    └── checkin.py              # 业务层：签到 / 连签 / 旅行 / 自检
 ```
 
 ## 安全说明
