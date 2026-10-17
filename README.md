@@ -123,7 +123,8 @@ python <技能目录>/scripts/checkin.py --json
 | `E_TIMEOUT` | 客户端无响应，重启客户端 |
 | `E_BAD_REQUEST: path must be relative` | 传了绝对 URL，客户端只接受相对路径 |
 | 旅行一直 `idle_limit` | 今日派遣次数用完，明天再来 |
-| 旅行 `no_buddy` | 账号还没领 Buddy：客户端「成长计划」→ 领取一只 → 手动点「领取奖励」 |
+| 旅行 `no_buddy` | 确实没有 Buddy（已查过 `/activity/growth/buddy/info`）：客户端「成长计划」→ 领取一只 → 手动点「领取奖励」 |
+| `travel.buddy_id` 为 0 但 status 是 `idle_limit` | **不是异常**：`travel/status` 在没有进行中的旅行时会把 `buddy_id` 归零，实际 Buddy 以 `buddy/info` 为准 |
 | 余额看着没变 | 接口返回的余额可能是领取前的快照，以加油站面板为准 |
 
 ## 目录结构

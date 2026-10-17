@@ -26,12 +26,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from wbipc import WbipcClient, WbipcError, config_dir, discovery_path  # noqa: E402
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 SCHEMA = 1
 
 PATH_ACTIVITY = "/v2/billing/meter/checkin-activity-status"
 PATH_CHECKIN = "/v2/billing/meter/daily-checkin"
 PATH_TRAVEL = "/activity/growth/buddy/travel"
+PATH_BUDDY = "/activity/growth/buddy"
 
 # 签到接口的业务返回码。10001 是「今天已签到」的实测值。
 # 1001 / 1002 / 1003 是客户端映射表里的同类语义，一并兼容，避免版本差异误判。
@@ -179,6 +180,27 @@ def step_streak(activity: dict, checkin: dict) -> dict:
     return out
 
 
+def probe_buddy(cli: WbipcClient) -> dict | None:
+    """读取账号的 Buddy 信息（只读）。
+
+    travel/status 只在「有进行中的旅行」时才带真实 buddy_id，
+    其余情况一律返回 0，所以判断用户到底有没有猫必须看这个接口。
+    """
+    try:
+        data = unwrap(cli.http("GET", PATH_BUDDY + "/info"))
+    except WbipcError:
+        return None
+    buddy = (data or {}).get("buddy") or {}
+    if not buddy.get("instance_id"):
+        return None
+    return {
+        "id": buddy.get("instance_id"),
+        "name": buddy.get("name"),
+        "rarity": buddy.get("rarity"),
+        "personality": buddy.get("personality"),
+    }
+
+
 def step_travel(cli: WbipcClient, do_depart: bool = True,
                 location: int | None = None, readonly: bool = False) -> dict:
     """猫猫旅行：先领后派。
@@ -201,9 +223,16 @@ def step_travel(cli: WbipcClient, do_depart: bool = True,
     }
 
     if not buddy_id:
-        out["status"] = "no_buddy"
-        out["detail"] = "账号下还没有 Buddy，先去客户端「成长计划」领取一只"
-        return out
+        # 服务端在没有进行中的旅行时会把 buddy_id 归零 —— 不能据此断定用户没领 Buddy。
+        # 必须回查 buddy/info（权威来源）区分「没领猫」与「猫在家歇着」。
+        info = probe_buddy(cli)
+        if not info:
+            out["status"] = "no_buddy"
+            out["detail"] = "账号下还没有 Buddy，先去客户端「成长计划」领取一只"
+            return out
+        out["buddy_id"] = info["id"]
+        out["buddy_name"] = info.get("name")
+        out["buddy_rarity"] = info.get("rarity")
 
     if state == "arrived":
         if readonly:
@@ -324,11 +353,21 @@ def doctor() -> int:
         except WbipcError as exc:
             print("  ⚠️ 旅行接口：%s" % exc)
         else:
-            buddy = travel.get("buddy_id") or 0
+            info = probe_buddy(cli) or {}
+            buddy = travel.get("buddy_id") or info.get("id") or 0
+            if info:
+                label = "%s（%s %s）" % (info.get("name") or info.get("id"),
+                                     info.get("rarity") or "?",
+                                     info.get("personality") or "?")
+            else:
+                label = "未领取"
             print("  %s Buddy：%s｜旅行状态：%s"
-                  % ("✅" if buddy else "⚠️", buddy or "未领取", travel.get("state")))
+                  % ("✅" if buddy else "⚠️", label, travel.get("state")))
             if not buddy:
                 print("     没有 Buddy 时旅行步骤会返回 no_buddy，属账号状态而非故障")
+            elif not travel.get("buddy_id"):
+                print("     注：无进行中旅行时 travel/status 会把 buddy_id 归零，"
+                      "实际 Buddy 以 buddy/info 为准")
     finally:
         cli.close()
 

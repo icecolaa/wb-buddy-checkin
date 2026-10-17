@@ -4,7 +4,7 @@ displayName: WorkBuddy 加油站签到
 display_name: WorkBuddy 加油站签到
 display_name_en: WorkBuddy Buddy-Station Check-in
 name: wb-checkin-icecola
-version: 1.1.0
+version: 1.1.1
 summary: 一条命令搞定 WorkBuddy「Buddy 加油站」每日签到、连签进度与猫猫旅行。走客户端本机 IPC 代发请求，零第三方依赖，全程不接触任何凭据。
 license: MIT
 homepage: https://github.com/
@@ -118,7 +118,10 @@ WorkBuddy 桌面端运行时会在本机开一个 IPC 服务，地址与票据�
 - `traveling` —— 猫在路上，`minutes_left` 是剩余分钟；
 - `idle_limit` —— 今天的派遣次数已用完；
 - `arrived` —— 已到达待领取（只读模式才会出现，全流程会自动领）；
-- `no_buddy` —— 账号还没领 Buddy，属账号状态，去客户端「成长计划」领一只即可；
+- `idle_limit` —— 今天的派遣次数已用完，**这是每天签完后的常态**；
+- `no_buddy` —— 查过 `/activity/growth/buddy/info` 确认账号下确实没有 Buddy。
+  注意别误判：`travel/status` 在没有进行中的旅行时会把 `buddy_id` 归零，
+  所以「猫在家歇着」和「没领猫」看这一个接口是分不出来的，只有 `buddy/info` 才是权威；
 - `pending` —— 只读模式下的「今天还没签」。
 
 `error` 是合法状态，但一定同时出现在 `anomalies` 里。

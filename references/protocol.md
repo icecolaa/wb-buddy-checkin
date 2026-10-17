@@ -88,7 +88,17 @@ c:wb.request/http.fetch                   ->  {status, headers, body_b64}
 | `E_BAD_REQUEST` | 参数不合规（如绝对 URL） | 改成本地相对路径 |
 | `E_BIZ_<code>` | 业务返回码非 0 | 由业务层按语义处理 |
 
-## 7. 手工探针
+## 7. 接口行为备忘（踩过的坑）
+
+- **`travel/status` 的 `buddy_id` 不可信**：只有在「有进行中的旅行」时才返回真实 ID，
+  其余状态（idle / idle_limit / 已领完）一律返回 `0`。判断账号到底有没有 Buddy
+  必须查 `GET /activity/growth/buddy/info`（返回 `data.buddy.instance_id` / `name` /
+  `rarity` / `personality`）。1.1.0 曾据此把「猫在家」误报成 `no_buddy`。
+- **`http.fetch` 的 `path` 必须相对**：传绝对 URL 会被拒，`E_BAD_REQUEST: path must be relative and start with /`。
+- **路径前缀会被归一化**：`/v2/activity/...` 与 `/activity/...` 都能通，不需要纠结。
+- **签到接口用 HTTP 400 表示「今天已签」**：body 里 `code: 10001` 才是真正的信息，别只看状态码。
+
+## 8. 手工探针
 
 判断「是脚本坏了还是通道坏了」时，最短的自检：
 

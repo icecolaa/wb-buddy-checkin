@@ -31,10 +31,12 @@ python scripts/checkin.py --doctor      # 通道 + 接口 + Buddy
 
 ## 2. 自动化提示词（直接复制给 `automation_update`）
 
+### 2.1 每天固定一次（推荐）
+
 调度：`FREQ=DAILY;BYHOUR=9;BYMINUTE=0`，`validUntil` 用活动截止日。
 
 ```
-执行 WorkBuddy「Buddy 加油站」每日自动签到，完成签到 / 连签查看 / 猫猫旅行（全部幂等）。
+执行 WorkBuddy「Buddy 加油站」每日签到（本机 IPC 版）。
 
 命令：
 python "<技能目录>/scripts/checkin.py" --json
@@ -47,26 +49,46 @@ python "<技能目录>/scripts/checkin.py" --json
 合法状态集：checkin = success/already_checked/pending/skipped/error；
 streak = ready/locked/skipped/error；
 travel = departed/claimed/traveling/arrived/idle/idle_limit/no_buddy/skipped/error。
-其中 traveling（猫在途）、idle_limit（今日次数已用完）、arrived（已到达待领）、
-no_buddy（账号没领 Buddy）都是正常终态，不是失败。
+traveling（在途）、idle_limit（今日次数用完）、arrived（待领取）都是正常终态。
+error 属于合法状态但必进 anomalies。
 
-退出码：0 = 成功（含幂等跳过）；1 = 接口/业务错误；2 = 参数错误；
-3 = 通道不可用 —— 先跑 --doctor，通道要求 WorkBuddy 桌面端正在运行且已登录。
+退出码：0 = 成功（含幂等跳过）；1 = 接口/业务错误；2 = 参数错误；3 = 通道不可用。
+退出码 3 时先跑 --doctor：若只是票据轮换，脚本已自动重连一次，重跑即可；
+仍然 3 就一句话说明「WorkBuddy 桌面端未运行或未登录」，结束，不要反复重试。
 
-不要加 --redeem / --lottery 之类的动作（本 Skill 不提供）。失败时最多重试一次，
-仍失败就用一句话说明原因，不要反复重试。
+约束：本技能只走本机 IPC 通道（零凭据），没有 --redeem / --lottery 之类的参数，
+也不要自行构造 HTTP 请求或读取任何凭据文件。失败最多重试一次。
 
 汇报：一句话给出签到结果（签到成功 / 今日已签）+ 余额 + 连签天数 +
-猫猫旅行状态（已派遣 / 在途几分钟 / 已领奖）。如果 streak 显示距下一档还差几天，顺带提一句。
+猫猫旅行状态（已派遣 / 在途几分钟 / 已领奖）。若 streak 显示距下一档还差几天，顺带提一句。
 ```
 
-不确定当天跑过没有时，把第一条命令换成：
+### 2.2 高频执行 + 每日静音闸门
+
+调度改成 `FREQ=HOURLY;INTERVAL=2`（应对当时电脑没开的情况）时，脚本幂等不会重复领，
+但会每两小时汇报一次。加一层**状态闸门**让它安静下来，同时不漏掉猫猫到点的奖励：
 
 ```
+执行 WorkBuddy「Buddy 加油站」每日签到（本机 IPC 版）。
+
+第一步，只读探测（零写请求）：
 python "<技能目录>/scripts/checkin.py" --check-only --json
+
+根据结果决定要不要往下走：
+- travel.state == "arrived"   → 猫已到家待领奖，进入第二步
+- checkin.status == "pending" → 今天还没签，进入第二步
+- 其余情况（今天已签、猫在途、今日次数已用完）→ 直接结束，不输出任何内容，不要汇报
+
+注意：travel.buddy_id 为 0 且 status 为 idle / idle_limit 是「猫在家歇着」的正常态，
+不代表账号没领 Buddy，不要提示用户去领猫。只有 status 明确是 no_buddy 才需要提示。
+
+第二步，全流程（幂等）：
+python "<技能目录>/scripts/checkin.py" --json
+
+判断规则与汇报格式同 2.1。不要加 --location，让目的地随机。
 ```
 
-看到 `today_checked_in: true` 就只汇报、不再跑全流程。
+闸门依据是**真实状态**而不是日期标记文件，所以「猫到点了要领奖」这种情况依然会被触发。
 
 ## 3. Agent 处置流程
 
@@ -75,8 +97,9 @@ python "<技能目录>/scripts/checkin.py" --check-only --json
 | 退出码 0 | 按上面模板汇报一句话即可 |
 | 退出码 1 | 读 `anomalies`，只报实际失败的那一步，别的步骤结果照常汇报 |
 | 退出码 3 | 先跑 `--doctor`：能通说明票据轮换，重跑一次；还是 3 就提示用户开客户端 |
-| `travel = no_buddy` | 提示用户去客户端「成长计划」领一只 Buddy，不要重试 |
-| `travel = idle_limit` | 说明今日次数已用完，明天自动恢复 |
+| `travel = no_buddy` | 确实没有 Buddy（已查过 `buddy/info`），提示去客户端「成长计划」领一只，不要重试 |
+| `travel = idle_limit` | 今日派遣次数已用完，明天自动恢复。这是每天跑完的常态，不要提示去领猫 |
+| `travel.buddy_id = 0` 但 status 不是 no_buddy | 正常：`travel/status` 无进行中旅行时会把 ID 归零，不代表没猫 |
 | `checkin = already_checked` | 正常，不要重试、不要换命令再试一次 |
 
 ## 4. 输出样例
@@ -85,7 +108,7 @@ python "<技能目录>/scripts/checkin.py" --check-only --json
 {
   "schema": 1,
   "ok": true,
-  "version": "1.1.0",
+  "version": "1.1.1",
   "mode": "full",
   "channel": "wbipc",
   "steps": [
