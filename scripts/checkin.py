@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from wbipc import WbipcClient, WbipcError, config_dir, discovery_path  # noqa: E402
 
-VERSION = "1.1.1"
+VERSION = "1.1.2"
 SCHEMA = 1
 
 PATH_ACTIVITY = "/v2/billing/meter/checkin-activity-status"

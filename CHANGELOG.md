@@ -1,5 +1,14 @@
 # 变更记录
 
+## 1.1.2
+
+适配 SkillHub 平台的打包限制，使 `skillhub publish` 能直接从仓库目录发布：
+
+- **移除 `.gitattributes` 与 `.gitignore`**：服务端拒绝一切点开头的隐藏文件
+  （`400 不允许的文件类型`），也是网页端「更新 Skill」提交失败的真正原因。
+- **`LICENSE` 改为 `LICENSE.md`**：服务端同样拒绝无扩展名的文件。
+  GitHub 仍能从 `LICENSE.md` 正常识别 MIT 许可证。
+
 ## 1.1.1
 
 修一个会把正常状态误报成异常的问题：

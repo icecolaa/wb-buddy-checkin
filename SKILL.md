@@ -4,7 +4,7 @@ displayName: WorkBuddy 加油站签到
 display_name: WorkBuddy 加油站签到
 display_name_en: WorkBuddy Buddy-Station Check-in
 name: wb-buddy-checkin
-version: 1.1.1
+version: 1.1.2
 summary: 一条命令搞定 WorkBuddy「Buddy 加油站」每日签到、连签进度与猫猫旅行。走客户端本机 IPC 代发请求，零第三方依赖，全程不接触任何凭据。
 license: MIT
 homepage: https://github.com/
@@ -180,4 +180,4 @@ IPC 会话，也会在锁屏时失败）。让 Agent 用 `automation_update` 创
 默认写入 `~/.workbuddy/wb-buddy-checkin/checkin.log`，单行结构化（时间 / 结论 / 各步状态 / 余额）。
 用 `WB_CHECKIN_LOG` 覆盖路径。日志里同样不含任何凭据。
 
-MIT License，见 `LICENSE`。
+MIT License，见 `LICENSE.md`。

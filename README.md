@@ -134,7 +134,7 @@ python <技能目录>/scripts/checkin.py --json
 ├── SKILL.md                    # 技能定义（含 SkillHub frontmatter）
 ├── README.md
 ├── CHANGELOG.md
-├── LICENSE
+├── LICENSE.md
 ├── references/
 │   ├── protocol.md             # IPC 协议备忘（握手 / RPC / 已知坑）
 │   └── examples.md             # 自动化提示词与输出样例
@@ -152,4 +152,4 @@ python <技能目录>/scripts/checkin.py --json
 
 ## License
 
-MIT，见 [LICENSE](LICENSE)。
+MIT，见 [LICENSE.md](LICENSE.md)。
