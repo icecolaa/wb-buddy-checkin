@@ -4,7 +4,7 @@ displayName: WorkBuddy 加油站签到
 display_name: WorkBuddy 加油站签到
 display_name_en: WorkBuddy Buddy-Station Check-in
 name: wb-buddy-checkin
-version: 1.1.2
+version: 1.1.3
 summary: 一条命令搞定 WorkBuddy「Buddy 加油站」每日签到、连签进度与猫猫旅行。走客户端本机 IPC 代发请求，零第三方依赖，全程不接触任何凭据。
 license: MIT
 homepage: https://github.com/

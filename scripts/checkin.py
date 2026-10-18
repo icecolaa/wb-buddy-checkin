@@ -26,7 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from wbipc import WbipcClient, WbipcError, config_dir, discovery_path  # noqa: E402
 
-VERSION = "1.1.2"
+VERSION = "1.1.3"
 SCHEMA = 1
 
 PATH_ACTIVITY = "/v2/billing/meter/checkin-activity-status"
@@ -471,6 +471,26 @@ def connect(retries: int = 2) -> WbipcClient:
     raise last  # pragma: no cover
 
 
+def gate_path() -> str:
+    return os.path.join(os.path.expanduser("~"), ".workbuddy", "wb-checkin-gate.json")
+
+
+def gate_done_today() -> bool:
+    try:
+        with open(gate_path(), encoding="utf-8") as fh:
+            return json.load(fh).get("date") == dt.date.today().isoformat()
+    except (OSError, ValueError):
+        return False
+
+
+def gate_mark_done() -> None:
+    try:
+        with open(gate_path(), "w", encoding="utf-8") as fh:
+            json.dump({"date": dt.date.today().isoformat(), "marked_at": now_text()}, fh)
+    except OSError:
+        pass  # 标记写不进去只影响省流，不影响签到本身
+
+
 def run(args) -> int:
     if args.self_test:
         return selftest()
@@ -483,6 +503,21 @@ def run(args) -> int:
         mode = "probe"
     else:
         mode = "full"
+
+    # 当日闸门：全流程 + --once-daily 时，当天已成功跑过就直接跳过。
+    # 全流程是「领完奖顺手再派」的闭环，成功结束后当天必然无事可做，
+    # 所以用本地日期标记即可，不必每次都先发只读请求探测。
+    if mode == "full" and args.once_daily and gate_done_today():
+        payload = {
+            "schema": SCHEMA, "ok": True, "version": VERSION, "mode": mode,
+            "channel": "wbipc", "gate": "done_today",
+            "steps": [], "anomalies": [],
+            "detail": "当日已成功执行过，按 --once-daily 跳过",
+        }
+        if args.json:
+            emit(args, payload)
+        write_log("%s | status=gate_skip | mode=%s" % (now_text(), mode))
+        return 0
 
     started = dt.datetime.now()
     try:
@@ -562,6 +597,8 @@ def run(args) -> int:
         if args.json:
             payload["generated_at"] = now_text()
         emit(args, payload)
+        if mode == "full" and args.once_daily and payload["ok"]:
+            gate_mark_done()
         write_log("%s | status=%s | mode=%s | checkin=%s | travel=%s | balance=%s"
                   % (now_text(), "ok" if payload["ok"] else "anomaly", mode,
                      next((s["status"] for s in steps if s["name"] == "checkin"), "-"),
@@ -641,6 +678,9 @@ def build_parser() -> argparse.ArgumentParser:
                         help="只读查询签到 / 连签 / 旅行状态（--probe 的别名）")
     parser.add_argument("--json", action="store_true", help="结构化输出")
     parser.add_argument("--no-travel", action="store_true", help="跳过猫猫旅行")
+    parser.add_argument("--once-daily", action="store_true",
+                        help="当日成功执行过一次后，后续运行直接跳过（本机日期标记，"
+                             "标记写在 ~/.workbuddy/wb-checkin-gate.json）")
     parser.add_argument("--no-depart", action="store_true",
                         help="只领取已到达的奖励，不发起新派遣")
     parser.add_argument("--travel-auto", action="store_true",
